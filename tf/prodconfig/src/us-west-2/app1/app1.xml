@@ -1,6 +1,11 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<root>
-    <element1>Hello</element1>
-    <element2>World</element2>
-    <element3>!</element3>
-</root>
+{
+  auto_https disable_redirects
+}
+
+:80 {
+  respond "Hello, world!"
+}
+
+:443 {
+  respond "Hello, world! Secure edition."
+}
