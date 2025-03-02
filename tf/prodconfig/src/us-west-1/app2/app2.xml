@@ -1,0 +1,11 @@
+{
+  auto_https disable_redirects
+}
+
+:80 {
+  respond "Hello, world!"
+}
+
+:443 {
+  respond "Hello, world! Secure edition."
+}

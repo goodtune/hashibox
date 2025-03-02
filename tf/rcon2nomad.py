@@ -49,11 +49,6 @@ EOF
         # destination = "local/{{ config.name }}"
         destination = "local/Caddyfile"
       }
-
-      resources {
-        cores  = 1
-        memory = 256
-      }
     }
   }
   ui {
