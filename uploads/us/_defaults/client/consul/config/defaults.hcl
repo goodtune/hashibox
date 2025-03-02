@@ -34,7 +34,7 @@ acl {
   enable_token_persistence = true
 
   tokens {
-    default = "<CONSUL_HTTP_TOKEN_TO_OVERRIDE>"
+    default = ""
   }
 }
 
