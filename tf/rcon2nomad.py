@@ -2,27 +2,42 @@
 # /// script
 # requires-python = ">=3.13"
 # dependencies = [
+#     "click",
 #     "jinja2",
 # ]
 # ///
 
-from pathlib import Path
-import jinja2
 import hashlib
+import re
+from pathlib import Path
+
+import click
+import jinja2
+
+EXTRA_RE = re.compile(r'(\w+)=(?:"([^"]+)"|([^:]+))')
 
 # Define the Jinja2 template for the Nomad HCL file
 nomad_template = """
 job "{{ name }}" {
+  {% if datacenter -%}
+  # job will only be allowed to run in this datacenter (swd:colo)
   datacenters = ["{{ datacenter }}"]
+  {%- else -%}
+  # not pinning to datacenter/s - jobs can roam
+  region = "us"
+  {%- endif %}
 
+  {% if constraint -%}
+  # job will only be allowed to run on this specific host
   constraint {
     attribute = "${attr.unique.hostname}"
     operator  = "="
     value     = "{{ host }}"
   }
+  {%- endif %}
 
-  group "scon" {
-    task "server" {
+  group "{{ name }}" {
+    task "{{ name }}" {
       driver = "raw_exec"
 
       config {
@@ -33,6 +48,8 @@ job "{{ name }}" {
         args = ["run", "--config", "local/Caddyfile"]
       }
 
+      user = "{{ extra.user|default("operat") }}"
+
       artifact {
         source      = "http://172.23.210.169:10000/{{ binary }}"
         destination = "local/{{ name }}"
@@ -40,6 +57,12 @@ job "{{ name }}" {
         options {
           checksum = "sha256:{{ checksum }}"
         }
+      }
+
+      resources {
+        {% if extra.memory -%}
+        memory = {{ extra.memory }}
+        {%- endif %}
       }
 
       template {
@@ -51,11 +74,16 @@ EOF
       }
     }
   }
+
   ui {
+    {% if extra.info -%}
+    description = "{{ extra.info }}"
+    {%- else -%}
     description = "Optiver : {{ name }}"
+    {%- endif %}
     link {
       label = "Learn more about {{ name }}"
-      url   = "https://optic.aus.optiver.com/optic/app/nomad"
+      url   = "https://optic.aus.optiver.com/optic/app/{{ name }}"
     }
   }
 }
@@ -70,7 +98,10 @@ def calculate_sha256(file_path):
     return sha256_hash.hexdigest()
 
 
-def extract_values_from_rcon_conf():
+@click.command()
+@click.option("--mode", default="datacenter")
+@click.option("--constraint/--no-constraint", is_flag=True, default=True)
+def rcon2nomad(mode, constraint):
     rcon_conf_files = Path("prodconfig/src").glob("*/rcon.conf")
 
     env = jinja2.Environment(loader=jinja2.BaseLoader)
@@ -79,26 +110,36 @@ def extract_values_from_rcon_conf():
     scon = Path("scon").resolve()
     scon.mkdir(exist_ok=True)
 
+    # Remove all hcl files in scon intermediate directory to ensure we
+    # would destroy any job that gets undefined.
+    for hcl_file in scon.glob("*.hcl"):
+        hcl_file.unlink()
+
     # Very naive home-rolled rcon.conf parsing
     for rcon_conf_file in rcon_conf_files:
         colo = rcon_conf_file.parent
         with rcon_conf_file.open("r") as file:
             for line in file:
-                host, name, command, extra = line.strip().split(":")
+                host, name, command, extra = line.strip().split(":", 3)
                 symlink = colo / name / name
                 binary = symlink.resolve()
                 checksum = calculate_sha256(binary)
                 config = colo / name / f"{name}.xml"
                 job = scon / f"{name}.hcl"
+                extra = [
+                    (key, quoted or unquoted)
+                    for key, quoted, unquoted in EXTRA_RE.findall(extra)
+                ]
                 rendered_hcl = template.render(
-                    datacenter=colo.name,
+                    datacenter=colo.name if mode == "datacenter" else None,
                     host=host,
                     name=name,
                     command=command,
-                    extra=extra,
+                    extra=dict(extra),
                     binary=binary.relative_to(Path("prodconfig").resolve()),
                     checksum=checksum,
                     config=config,
+                    constraint=constraint,
                 )
 
                 with job.open("wt") as hcl:
@@ -106,4 +147,4 @@ def extract_values_from_rcon_conf():
 
 
 if __name__ == "__main__":
-    extract_values_from_rcon_conf()
+    rcon2nomad()
