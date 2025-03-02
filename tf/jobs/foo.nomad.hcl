@@ -1,13 +1,20 @@
 job "foo" {
-  datacenters = ["us-west-1", "us-east-1", "us-west-2"]
-  type        = "service"
+  region = "us"
+  type   = "service"
+
+  constraint {
+    attribute = "${attr.unique.hostname}"
+    operator  = "="
+    value     = "node-client-1" # Ensure only one instance runs on a specific node
+  }
+
   group "foo" {
     task "foo" {
       driver = "raw_exec"
 
       config {
         command = "/bin/sleep"
-        args    = ["5m"]
+        args    = ["23h"]
       }
 
       // I've manually added the user 'operat' to each of the clients for now

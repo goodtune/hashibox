@@ -1,12 +1,12 @@
 job "bar" {
-  datacenters = ["us-west-1", "us-west-2"]
-  type        = "service"
+  region = "us"
+  type   = "service"
   group "foo" {
     task "bar" {
       driver = "raw_exec"
       config {
         command = "/bin/sleep"
-        args    = ["15m"]
+        args    = ["23h"]
       }
 
       resources {

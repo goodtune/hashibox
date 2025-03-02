@@ -1,6 +1,6 @@
 job "caddy" {
-  datacenters = ["us-east-1", "us-west-1", "us-west-2"]
-  type        = "system" # Ensures it runs on all clients
+  region = "us"
+  type   = "system" # Ensures it runs on all clients
 
   group "reverse-proxy" {
     network {
