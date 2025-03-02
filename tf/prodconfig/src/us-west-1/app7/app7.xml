@@ -2,10 +2,10 @@
   auto_https disable_redirects
 }
 
-:80 {
+:8080 {
   respond "Hello, world!"
 }
 
-:443 {
+:8443 {
   respond "Hello, world! Secure edition."
 }
