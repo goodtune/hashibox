@@ -1,11 +1,51 @@
-{
-  auto_https disable_redirects
-}
-
-:8080 {
-  respond "Hello, world!"
-}
-
-:8443 {
-  respond "Hello, world! Secure edition."
-}
+<?xml version="1.0" encoding="UTF-8"?>{{ with nomadVar "nomad/jobs" }}
+<AbacusConfig xmlns="http://ns.au.optiver.com/abacus.xsd" xmlns:cms="http://ns.au.optiver.com/cms.xsd">
+  <EventCore xmlns="http://ns.au.optiver.com/eventcore.xsd">
+    <Logging>
+      <Level>Info</Level>
+      <Path>/apps/log</Path>
+      <AppendDateTime>true</AppendDateTime>
+    </Logging>
+    <RunHot>true</RunHot>
+    <Monitor>
+      <SampleIntervalMs>10000</SampleIntervalMs>
+      <BusyTimeWarningMs>1000</BusyTimeWarningMs>
+    </Monitor>
+    <ControlAgentPort>1104</ControlAgentPort>
+  </EventCore>
+  <Executor/>
+  <!-- per-underlying config  (that's just the theo server point picking params) -->
+  <Defaults>
+    <!-- point picking configuration -->
+    <PointPicking>
+      <!-- max base move (that's half the base range as configured in F1 / TheoServer) -->
+      <MaxBaseMove>{{ .aba_txo_maxBaseMove }}</MaxBaseMove>
+      <!-- maximum extrapolation error as fraction of base price -->
+      <MaxError>{{ .aba_txo_maxError }}</MaxError>
+    </PointPicking>
+  </Defaults>
+  <!-- optional Abacus server (CMS / Cap'N Proto) interface -->
+  <AbacusServer>
+    <cms:Listen>bop:{{ env "NOMAD_PORT_aba" }}</cms:Listen>
+  </AbacusServer>
+  <!-- optional theo server (CMS / gbgen) interface -->
+  <TheoServer>
+    <cms:Listen>bop:{{ env "NOMAD_PORT_theo" }}</cms:Listen>
+  </TheoServer>
+  <!--
+  <Vault>
+    &TWMMVault;
+  </Vault>
+  -->
+  <!-- Connect to zero or more base val publishers. The theo server interface
+  requires base valuation and will not work without (it does not accept
+  base valuations from its clients -->
+  <BaseValuations>
+    <BaseValuationClient>
+      <!--
+      <Subscribe xmlns="http://ns.au.optiver.com/cms.xsd">&find-rpg_twmm_baq_prc-valuation;;&cms_timeout;</Subscribe>
+      -->
+    </BaseValuationClient>
+  </BaseValuations>
+</AbacusConfig>
+{{ end }}

@@ -7,6 +7,7 @@
 # ]
 # ///
 
+import ast
 import hashlib
 import re
 from pathlib import Path
@@ -37,6 +38,14 @@ job "{{ name }}" {
   {%- endif %}
 
   group "{{ name }}" {
+    network {
+      mode = "host"
+
+      {% for port in extra.ports -%}
+      port "{{ port }}" {}
+      {% endfor %}
+    }
+
     task "{{ name }}" {
       driver = "raw_exec"
 
@@ -44,14 +53,17 @@ job "{{ name }}" {
         command = "local/{{ name }}"
         // Caddy doesn't behave like Optiver C++ apps so
         // I'm adding args to move past that.
-        # args = ["run", "--config", "local/{{ config.name }}"]
-        args = ["run", "--config", "local/Caddyfile"]
+        {% if extra.xml %}
+          args = ["run"]
+        {% else %}
+          args = ["run", "--config", "local/Caddyfile"]
+        {% endif %}
       }
 
       user = "{{ extra.user|default("operat") }}"
 
       artifact {
-        source      = "http://172.23.210.169:10000/{{ binary }}"
+        source      = "{{ artifactory }}/{{ binary }}"
         destination = "local/{{ name }}"
         mode        = "file"
         options {
@@ -61,17 +73,52 @@ job "{{ name }}" {
 
       resources {
         {% if extra.memory -%}
+        cores = {% if extra.memory > 100 %}2{% else %}1{% endif %}
         memory = {{ extra.memory }}
         {%- endif %}
       }
 
       template {
-        data = <<EOF
+        data = <<-EOF
 {{ config.open().read() }}
 EOF
-        # destination = "local/{{ config.name }}"
-        destination = "local/Caddyfile"
+        {% if extra.xml %}
+          destination = "local/{{ config.name }}"
+        {% else %}
+          destination = "local/Caddyfile"
+        {% endif %}
       }
+
+      {% raw %}
+      template {
+        data = <<-EOH
+          {{ with pkiCert "pki/issue/foo" "common_name=foo.service.consul" "ip_sans=127.0.0.1" "format=pem" }}
+          {{ .Cert }}
+          {{ .CA }}
+          {{ .Key }}{{ end }}
+          EOH
+        destination   = "${NOMAD_SECRETS_DIR}/bundle.pem"
+        change_mode   = "restart"
+      }
+      {% endraw %}
+
+      # Disable the restart policy - overload for ALM enabled services
+      # https://developer.hashicorp.com/nomad/docs/job-specification/restart#disabling-restart
+      restart {
+        attempts = 0
+        mode     = "fail"
+      }
+
+{% for port in extra.ports %}
+      service {
+        name = "{{ name }}-{{ port }}"
+        port = "{{ port }}"
+        meta {
+          app = "{{ name }}"
+          service = "{{ port }}"
+        }
+      }
+{% endfor %}
     }
   }
 
@@ -96,6 +143,16 @@ def calculate_sha256(file_path):
         for byte_block in iter(lambda: f.read(4096), b""):
             sha256_hash.update(byte_block)
     return sha256_hash.hexdigest()
+
+
+def coerce(key, value):
+    if key == "memory":
+        return int(value)
+    if key == "ports":
+        return value.split(",")
+    if key == "xml":
+        return ast.literal_eval(value)
+    return value
 
 
 @click.command()
@@ -127,7 +184,7 @@ def rcon2nomad(mode, constraint):
                 config = colo / name / f"{name}.xml"
                 job = scon / f"{name}.hcl"
                 extra = [
-                    (key, quoted or unquoted)
+                    (key, coerce(key, quoted or unquoted))
                     for key, quoted, unquoted in EXTRA_RE.findall(extra)
                 ]
                 rendered_hcl = template.render(
@@ -140,6 +197,7 @@ def rcon2nomad(mode, constraint):
                     checksum=checksum,
                     config=config,
                     constraint=constraint,
+                    artifactory="http://172.20.10.2:10000",
                 )
 
                 with job.open("wt") as hcl:

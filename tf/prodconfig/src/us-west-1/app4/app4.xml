@@ -3,9 +3,13 @@
 }
 
 :8080 {
-  respond "Hello, world!"
+  {{ range service "app3-imlp" }}
+  reverse_proxy http://{{ .Address }}:{{ .Port }}
+  {{ end }}
 }
 
 :8443 {
-  respond "Hello, world! Secure edition."
+  {{ range service "app3-calc" }}
+  reverse_proxy http://{{ .Address }}:{{ .Port }}
+  {{ end }}
 }
